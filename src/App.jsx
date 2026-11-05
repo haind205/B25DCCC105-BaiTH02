@@ -1,3 +1,4 @@
+import { ArrowUpRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { CloudSun, Sun, Cloud, CloudRain, CloudDrizzle, CloudLightning, CloudSnow, CloudFog, Droplets, Wind, Gauge, Search, MapPin, Star, RefreshCw, ChevronDown, Thermometer, Sunrise, Sunset } from 'lucide-react'
 
@@ -170,7 +171,7 @@ function App() {
               <Metric icon={CloudRain} label="Lượng mưa" value={current ? `${current.precipitation} mm` : '—'} note="Hiện tại" color="violet" />
               <Metric icon={Gauge} label="Thời tiết" value={weatherNow?.label ?? '—'} note="Mã WMO" color="amber" />
             </div>
-            <div className="sun-times"><span><Sunrise size={16}/><small>Bình minh</small><b>{localTime(daily?.sunrise?.[0])}</b></span><i/><span><Sunset size={16}/><small>Hoàng hôn</small><b>{localTime(daily?.sunset?.[0])}</b></span><span className="sun-track"><i/></span></div>
+            <div className="sun-times"><span><Sunrise size={16}/><small>Bình minh</small><b>{formatApiTime(daily?.sunrise?.[0])}</b></span><i/><span><Sunset size={16}/><small>Hoàng hôn</small><b>{formatApiTime(daily?.sunset?.[0])}</b></span><span className="sun-track"><i/></span></div>
           </article>
         </div>
 
