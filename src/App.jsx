@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CloudSun, Sun, Cloud, CloudRain, CloudDrizzle, CloudLightning, CloudSnow, CloudFog, Droplets, Wind, Gauge, Search, MapPin, Star, RefreshCw, ChevronDown, ArrowUpRight, Thermometer, Sunrise, Sunset } from 'lucide-react'
+import { CloudSun, Sun, Cloud, CloudRain, CloudDrizzle, CloudLightning, CloudSnow, CloudFog, Droplets, Wind, Gauge, Search, MapPin, Star, RefreshCw, ChevronDown, Thermometer, Sunrise, Sunset } from 'lucide-react'
 
 const cities = [
   { name: 'Hà Nội', lat: 21.0285, lon: 105.8542, region: 'Miền Bắc' },
@@ -33,6 +33,14 @@ const formatApiTime = value => {
   const [year, month, day] = date.split('-')
   return `${time} · ${day}/${month}/${year}`
 }
+const hourLabel = value => value?.split('T')[1]?.slice(0, 5) || '—'
+const hourPeriod = value => {
+  const hour = Number(value?.split('T')[1]?.slice(0, 2))
+  if (hour < 6) return 'ĐÊM'
+  if (hour < 11) return 'SÁNG'
+  if (hour < 17) return 'NGÀY'
+  return 'TỐI'
+}
 
 const weatherScene = code => {
   const scene = (photoId, page) => ({
@@ -63,12 +71,12 @@ function App() {
   const fetchWeather = async (city = selected) => {
     if (!city) return
     setLoading(true); setError(''); setWeather(null)
-    const params = new URLSearchParams({ latitude: city.lat, longitude: city.lon, current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m', daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset', timezone: 'Asia/Ho_Chi_Minh', forecast_days: '7' })
+    const params = new URLSearchParams({ latitude: city.lat, longitude: city.lon, current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,pressure_msl', hourly: 'temperature_2m,weather_code,precipitation_probability', daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset', timezone: 'Asia/Ho_Chi_Minh', forecast_days: '7' })
     try {
       const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`)
       if (!response.ok) throw new Error('Không thể kết nối máy chủ thời tiết.')
       const result = await response.json()
-      if (!result.current || !result.daily) throw new Error('Dữ liệu thời tiết chưa sẵn sàng.')
+      if (!result.current || !result.hourly || !result.daily) throw new Error('Dữ liệu thời tiết chưa sẵn sàng.')
       setWeather(result)
     } catch (e) { setError(e.message || 'Đã xảy ra lỗi. Vui lòng thử lại.') }
     finally { setLoading(false) }
@@ -88,14 +96,29 @@ function App() {
   }, [query])
   const current = weather?.current
   const daily = weather?.daily
+  const hourlyForecast = useMemo(() => {
+    const times = weather?.hourly?.time
+    if (!times || !current) return []
+    const found = times.findIndex(time => time >= current.time)
+    const start = found < 0 ? 0 : found
+    return Array.from({ length: 8 }, (_, offset) => {
+      const index = start + offset * 3
+      if (index >= times.length) return null
+      return {
+        time: times[index],
+        temperature: weather.hourly.temperature_2m[index],
+        code: weather.hourly.weather_code[index],
+        precipitation: weather.hourly.precipitation_probability?.[index],
+      }
+    }).filter(Boolean)
+  }, [weather, current])
   const weatherNow = current ? weatherInfo(current.weather_code, Boolean(current.is_day)) : null
   const scene = weatherScene(current?.weather_code ?? 2)
   const TempIcon = weatherNow?.Icon ?? CloudSun
   const temp = value => value == null ? '—' : `${unit === 'C' ? Math.round(value) : toFahrenheit(value)}°`
-  const localTime = iso => iso?.split('T')[1]?.slice(0, 5) || '—'
-  const isDaytime = now.getHours() >= 6 && now.getHours() < 18
+  const isDaytime = current ? Boolean(current.is_day) : now.getHours() >= 6 && now.getHours() < 18
 
-  const chooseCity = city => { setSelected(city); setQuery(''); document.querySelector('.sidebar')?.classList.remove('mobile-open') }
+  const chooseCity = city => { setSelected(city); setQuery(''); document.querySelector('.city-picker')?.removeAttribute('open') }
   const toggleFavorite = cityName => setFavorites(prev => prev.includes(cityName) ? prev.filter(name => name !== cityName) : [...prev, cityName])
 
   return <main className={`app-shell ${isDaytime ? 'day' : 'night'}`}>
