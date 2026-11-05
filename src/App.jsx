@@ -27,6 +27,12 @@ const weatherInfo = (code, day = true) => {
 const weekday = (date, options = { weekday: 'long' }) => new Intl.DateTimeFormat('vi-VN', options).format(date)
 const dateLabel = (iso, options = { day: 'numeric', month: 'short' }) => new Intl.DateTimeFormat('vi-VN', options).format(new Date(`${iso}T12:00:00`))
 const toFahrenheit = c => Math.round((c * 9) / 5 + 32)
+const formatApiTime = value => {
+  if (!value) return '—'
+  const [date, time] = value.split('T')
+  const [year, month, day] = date.split('-')
+  return `${time} · ${day}/${month}/${year}`
+}
 
 const weatherScene = code => {
   const scene = (photoId, page) => ({
@@ -43,9 +49,9 @@ const weatherScene = code => {
 }
 
 function App() {
-  const [selected, setSelected] = useState(cities[0])
+  const [selected, setSelected] = useState(null)
   const [weather, setWeather] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [unit, setUnit] = useState('C')
   const [query, setQuery] = useState('')
@@ -55,7 +61,8 @@ function App() {
   const [now, setNow] = useState(new Date())
 
   const fetchWeather = async (city = selected) => {
-    setLoading(true); setError('')
+    if (!city) return
+    setLoading(true); setError(''); setWeather(null)
     const params = new URLSearchParams({ latitude: city.lat, longitude: city.lon, current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m', daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset', timezone: 'Asia/Ho_Chi_Minh', forecast_days: '7' })
     try {
       const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`)
@@ -67,7 +74,10 @@ function App() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchWeather(selected) }, [selected])
+  useEffect(() => {
+    if (selected) fetchWeather(selected)
+    else { setWeather(null); setError(''); setLoading(false) }
+  }, [selected])
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer) }, [])
   useEffect(() => { localStorage.setItem('may-favorites', JSON.stringify(favorites)) }, [favorites])
 
@@ -78,9 +88,9 @@ function App() {
   }, [query])
   const current = weather?.current
   const daily = weather?.daily
-  const weatherNow = current ? weatherInfo(current.weather_code, Boolean(current.is_day)) : weatherInfo(2)
+  const weatherNow = current ? weatherInfo(current.weather_code, Boolean(current.is_day)) : null
   const scene = weatherScene(current?.weather_code ?? 2)
-  const TempIcon = weatherNow.Icon
+  const TempIcon = weatherNow?.Icon ?? CloudSun
   const temp = value => value == null ? '—' : `${unit === 'C' ? Math.round(value) : toFahrenheit(value)}°`
   const localTime = iso => iso?.split('T')[1]?.slice(0, 5) || '—'
   const isDaytime = now.getHours() >= 6 && now.getHours() < 18
@@ -98,7 +108,7 @@ function App() {
       <label className="search-box"><Search size={15}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Tìm thành phố" aria-label="Tìm thành phố" />{query && <button onClick={() => setQuery('')} aria-label="Xóa tìm kiếm">×</button>}</label>
       <div className="city-list">
         {visibleCities.map(city => {
-          const active = selected.name === city.name
+          const active = selected?.name === city.name
           const favorite = favorites.includes(city.name)
           return <button key={city.name} className={`city-item ${active ? 'selected' : ''}`} onClick={() => chooseCity(city)}>
             <span className="city-marker"><MapPin size={15}/></span><span className="city-copy"><strong>{city.name}</strong><small>{city.region}</small></span>
@@ -112,8 +122,8 @@ function App() {
     </aside>
 
     <section className="main-area" id="top">
-      <header className="topbar"><div className="breadcrumb">Tổng quan <span>/</span> <strong>{selected.name}</strong></div>
-        <div className="top-actions"><div className="updated"><span className="live-dot"/> Cập nhật trực tiếp</div><div className="unit-switch" aria-label="Đơn vị nhiệt độ"><button className={unit === 'C' ? 'chosen' : ''} onClick={() => setUnit('C')}>°C</button><button className={unit === 'F' ? 'chosen' : ''} onClick={() => setUnit('F')}>°F</button></div><button className="icon-button" aria-label="Tải lại thời tiết" onClick={() => fetchWeather()} disabled={loading}><RefreshCw size={17} className={loading ? 'spinning' : ''}/></button></div>
+      <header className="topbar"><div className="breadcrumb">Tổng quan <span>/</span> <strong>{selected?.name ?? 'Chọn thành phố'}</strong></div>
+        <div className="top-actions"><div className="updated">{current && <span className="live-dot"/>}{current ? `Cập nhật lúc ${formatApiTime(current.time)}` : selected ? (loading ? 'Đang tải dữ liệu' : 'Chưa có dữ liệu') : 'Chưa chọn thành phố'}</div><div className="unit-switch" aria-label="Đơn vị nhiệt độ"><button className={unit === 'C' ? 'chosen' : ''} onClick={() => setUnit('C')}>°C</button><button className={unit === 'F' ? 'chosen' : ''} onClick={() => setUnit('F')}>°F</button></div><button className="icon-button" aria-label="Tải lại thời tiết" onClick={() => fetchWeather()} disabled={loading || !selected}><RefreshCw size={17} className={loading ? 'spinning' : ''}/></button></div>
       </header>
 
       <div className="content">
@@ -123,9 +133,9 @@ function App() {
 
         <div className="dashboard-grid">
           <article className="hero-card" style={{ '--weather-image': scene.image }}>
-            <div className="hero-top"><div><div className="location-kicker"><MapPin size={13}/> {selected.region.toUpperCase()}</div><h2>{selected.name}<button className={`star-button ${favorites.includes(selected.name) ? 'is-favorite' : ''}`} onClick={() => toggleFavorite(selected.name)} aria-label={favorites.includes(selected.name) ? 'Bỏ yêu thích' : 'Thêm yêu thích'}><Star size={18} fill={favorites.includes(selected.name) ? 'currentColor' : 'none'}/></button></h2><div className="local-time">{new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(now)} <span>giờ địa phương</span></div></div><div className="hero-weather-icon"><TempIcon size={76} strokeWidth={1.35}/></div></div>
-            <div className="hero-temperature"><span>{loading && !current ? '—' : temp(current?.temperature_2m)}</span><div><strong>{weatherNow.label}</strong><small>Cảm giác như {temp(current?.apparent_temperature)}</small></div></div>
-            <div className="hero-bottom"><span><Thermometer size={15}/> Hôm nay <b>{temp(daily?.temperature_2m_min?.[0])} / {temp(daily?.temperature_2m_max?.[0])}</b></span><span className="hero-meta"><span className="hero-condition-tag">{current?.is_day ? '☼' : '☾'} &nbsp;{current?.is_day ? 'Ban ngày' : 'Ban đêm'}</span><a className="photo-credit" href={scene.credit} target="_blank" rel="noreferrer">Ảnh: Pexels ↗</a></span></div>
+            <div className="hero-top"><div><div className="location-kicker"><MapPin size={13}/> {selected?.region.toUpperCase() ?? '8 THÀNH PHỐ VIỆT NAM'}</div><h2>{selected?.name ?? 'Chưa chọn thành phố'}{selected && <button className={`star-button ${favorites.includes(selected.name) ? 'is-favorite' : ''}`} onClick={() => toggleFavorite(selected.name)} aria-label={favorites.includes(selected.name) ? 'Bỏ yêu thích' : 'Thêm yêu thích'}><Star size={18} fill={favorites.includes(selected.name) ? 'currentColor' : 'none'}/></button>}</h2><div className="local-time">{current ? <><span>Thời điểm cập nhật</span> <b>{formatApiTime(current.time)}</b></> : <span>{selected ? (loading ? 'Đang tải dữ liệu thời tiết…' : 'Chưa có dữ liệu thời tiết') : 'Chọn một thành phố ở thanh bên để bắt đầu'}</span>}</div></div><div className="hero-weather-icon"><TempIcon size={76} strokeWidth={1.35}/></div></div>
+            <div className="hero-temperature"><span>{loading && !current ? '—' : temp(current?.temperature_2m)}</span><div><strong>{weatherNow?.label ?? (selected ? (loading ? 'Đang tải…' : 'Chưa có dữ liệu') : 'Chọn thành phố')}</strong><small>Cảm giác như {temp(current?.apparent_temperature)}</small></div></div>
+            <div className="hero-bottom"><span><Thermometer size={15}/> Hôm nay <b>{temp(daily?.temperature_2m_min?.[0])} / {temp(daily?.temperature_2m_max?.[0])}</b></span><span className="hero-meta"><span className="hero-condition-tag">{current ? (current.is_day ? '☼  Ban ngày' : '☾  Ban đêm') : 'Chưa có dữ liệu'}</span><a className="photo-credit" href={scene.credit} target="_blank" rel="noreferrer">Ảnh: Pexels ↗</a></span></div>
             {loading && <div className="loading-overlay"><span className="loader"/>Đang cập nhật thời tiết</div>}
           </article>
 
@@ -135,7 +145,7 @@ function App() {
               <Metric icon={Droplets} label="Độ ẩm" value={current ? `${Math.round(current.relative_humidity_2m)}%` : '—'} note="Không khí" color="blue" />
               <Metric icon={Wind} label="Tốc độ gió" value={current ? `${Math.round(current.wind_speed_10m)} km/h` : '—'} note="Gió nhẹ" color="mint" />
               <Metric icon={CloudRain} label="Lượng mưa" value={current ? `${current.precipitation} mm` : '—'} note="Hiện tại" color="violet" />
-              <Metric icon={Gauge} label="Thời tiết" value={loading && !current ? '—' : weatherNow.label} note="Mã WMO" color="amber" />
+              <Metric icon={Gauge} label="Thời tiết" value={weatherNow?.label ?? '—'} note="Mã WMO" color="amber" />
             </div>
             <div className="sun-times"><span><Sunrise size={16}/><small>Bình minh</small><b>{localTime(daily?.sunrise?.[0])}</b></span><i/><span><Sunset size={16}/><small>Hoàng hôn</small><b>{localTime(daily?.sunset?.[0])}</b></span><span className="sun-track"><i/></span></div>
           </article>
@@ -165,7 +175,7 @@ function App() {
         <footer className="footer"><span>Made for a brighter day <span className="footer-sun">✳</span></span><span>Nguồn dữ liệu <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open‑Meteo ↗</a></span></footer>
       </div>
     </section>
-    <button className="mobile-city-select" onClick={() => document.querySelector('.sidebar')?.classList.toggle('mobile-open')}><MapPin size={16}/>{selected.name}<ChevronDown size={15}/></button>
+    <button className="mobile-city-select" onClick={() => document.querySelector('.sidebar')?.classList.toggle('mobile-open')}><MapPin size={16}/>{selected?.name ?? 'Chọn thành phố'}<ChevronDown size={15}/></button>
   </main>
 }
 
